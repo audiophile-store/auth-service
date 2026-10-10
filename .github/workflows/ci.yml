@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Lint, build and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+  docker:
+    name: Docker build and image scan
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    env:
+      IMAGE_TAG: audiophile-auth-service:${{ github.sha }}
+      TRIVY_IMAGE_SRC: docker
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build Docker image
+        run: docker build --pull --tag "$IMAGE_TAG" .
+
+      - name: Report image vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.75.0
+          scan-type: image
+          image-ref: ${{ env.IMAGE_TAG }}
+          scanners: vuln
+          format: table
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: "0"
+          timeout: 10m
+
+      - name: Reject fixable high and critical vulnerabilities
+        run: >-
+          trivy image --cache-dir .cache/trivy
+          --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed
+          --exit-code 1 --timeout 10m "$IMAGE_TAG"
