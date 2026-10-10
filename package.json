@@ -9,7 +9,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "lint": "biome lint src tests --error-on-warnings",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test tests/*.test.ts",
+    "test:local": "tsx --env-file=.env --test tests/*.test.ts"
   },
   "keywords": [],
   "author": "",
