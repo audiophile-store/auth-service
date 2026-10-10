@@ -131,8 +131,103 @@ the algorithm, parameters, salt, and result, and can be stored in `password_hash
 Correct passwords return `true` and incorrect passwords return `false`.
 Invalid stored hashes and library errors propagate as errors, not authentication
 failures. Passwords are not trimmed or normalized and are never logged.
-Password policy, admin creation, and login integration are separate steps;
-these helpers do not access a database or create accounts.
+Password policy and admin commands use separate helpers described below;
+hashing itself does not access a database or create accounts. Login integration
+remains a later step.
+
+## Input validation
+
+`src/validation.ts` provides standalone helpers; no HTTP routes are added.
+`validateEmail` trims and lowercases an email, enforces a 254-character limit,
+and accepts unquoted dot-separated local parts and dotted domain names.
+Display names, whitespace inside addresses, empty labels, and domain labels
+with leading/trailing hyphens are rejected.
+
+`validateNewPassword` preserves the original password and requires 8–128
+Unicode code points, at least one uppercase letter, and punctuation or a symbol.
+Whitespace does not count as a special character; digits and lowercase letters
+are not mandatory. This policy is intended for account creation/password changes.
+
+`validateLoginRequest` accepts only `email` and `password`, returns a fresh object
+with normalized email and unchanged password, and requires a nonempty password
+of at most 128 Unicode code points without imposing new-password complexity.
+Validation errors use fixed messages without input values and propagate to the
+caller. The 4 KiB HTTP body limit will be wired when login is implemented.
+
+## Admin commands
+
+After explicitly applying the migration, run one of these commands from an
+interactive terminal:
+
+```sh
+npm run admin:create
+npm run admin:change-password
+```
+
+They load the local `.env` and connect through `DATABASE_URL`. Email is prompted;
+password and confirmation are entered without terminal echo. Passwords must
+match and pass the new-password policy. Never pass a password as a command-line
+argument, environment variable, seed file, or chat message. Noninteractive input
+and additional arguments are rejected; cancellation and errors return a nonzero
+exit code without printing credentials or database details.
+
+To use the running local Docker app instead:
+
+```sh
+docker compose exec app node dist/run-admin.js create
+docker compose exec app node dist/run-admin.js change-password
+```
+
+Rebuild the app container first after code changes. These commands use the
+container's configured database; they do not need npm in the production image.
+Check the target database before running them. Production commands require a
+separately authorized interactive environment and the production configuration.
+
+Creation stores a normalized unique email, an Argon2id hash and the admin role;
+duplicate email errors do not overwrite an account. Password changes update
+the hash and revoke all non-revoked sessions for that admin atomically in one
+SQL statement. They preserve previously recorded revocation times and account
+activity, and do not modify other accounts. No public registration or password
+change endpoint is provided, and no admin is created at server startup.
+
+## Authentication routes
+
+| Route | Result |
+| --- | --- |
+| `POST /login` | Validates JSON email/password, verifies the admin, saves a session, and returns `{ user: { id, email, role }, expiresAt }`. |
+| `GET /me` | Returns the same identity/expiry for an active session, otherwise 401; never extends its lifetime. |
+| `POST /logout` | Revokes only the current session and clears the cookie; returns 204, including for an expired/missing session. |
+
+Sessions expire one hour after login. A random 32-byte token is sent only in
+the `audiophile_session` cookie; PostgreSQL stores its SHA-256 hash. Cookies
+use HttpOnly, Path=/, SameSite=Lax, no Domain, and Secure except when
+`NODE_ENV=development` for local HTTP. Auth responses have `Cache-Control: no-store`.
+
+Set `AUTH_ALLOWED_ORIGINS` to comma-separated exact UI origins (no trailing
+slash). Login/logout require a matching Origin header; `/me` works without it
+for backend callers. An empty allowlist denies login/logout and produces a
+startup warning. Compose uses development mode by default for local HTTP;
+Render must retain production mode and its explicit approved UI origins.
+No CORS or frontend proxy is configured in this step.
+
+The in-memory limiter allows 30 login attempts per IP and five failed attempts
+per IP/email in a 15-minute fixed window. It resets on restart and is intended
+for one instance; malformed/invalid input is rejected before counting.
+Express does not trust forwarded IP headers. Proxy/client-IP
+verification on Render remains pending; clients behind a proxy may share a limit.
+
+Invalid input (including JSON over 4096 bytes) returns 400, invalid credentials
+or session 401, forbidden Origin 403, rate limit 429 with Retry-After, database
+errors 503, and unexpected errors 500. Errors contain `error` and `code`, not
+credentials or database details. Failed login/logout database writes do not
+return success or change cookies.
+
+This deliberately simple demo does not equalize unknown-email verification
+timing or reserve limiter slots for concurrent password checks. Account changes
+and login are intended as sequential demo operations; concurrent login/password
+changes are not serialized. Database persistence and existing session
+revocation remain covered by tests. Browser/proxy behavior still needs separate
+verification during UI integration.
 
 ## Deployment configuration boundary
 
