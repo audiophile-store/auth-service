@@ -9,6 +9,15 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 
+FROM build AS test
+
+COPY tests ./tests
+COPY migrations ./migrations
+
+USER node
+
+CMD ["node", "--import", "tsx", "tests/run-docker-tests.ts"]
+
 FROM node:22-bookworm-slim AS runtime
 
 ENV NODE_ENV=production
