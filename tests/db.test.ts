@@ -7,7 +7,7 @@ function runPool(script: string, databaseUrl = "") {
     process.execPath,
     ["--import", "tsx", "--input-type=module", "--eval", script],
     {
-      env: { ...process.env, DATABASE_URL: databaseUrl },
+      env: { ...process.env, DATABASE_URL: databaseUrl, AUTH_ALLOWED_ORIGINS: "https://store.example.com" },
       encoding: "utf8",
       timeout: 10000,
     },

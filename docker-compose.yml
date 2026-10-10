@@ -16,8 +16,9 @@ services:
       context: .
     image: audiophile-auth-service:local
     environment:
-      NODE_ENV: production
+      NODE_ENV: ${NODE_ENV:-development}
       DATABASE_URL: ${DOCKER_DATABASE_URL:-}
+      AUTH_ALLOWED_ORIGINS: ${AUTH_ALLOWED_ORIGINS:-}
       PORT: "3000"
       APP_VERSION: ${APP_VERSION:-0.1.0}
     ports:
