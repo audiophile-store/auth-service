@@ -120,6 +120,20 @@ localhost URL for tests on your computer. No local `.env` is copied into the
 image. Failed tests produce a nonzero container exit code; `--rm` removes the
 one-off test container without removing the database or its volume.
 
+## Password hashing
+
+`hashPassword(password)` and `verifyPassword(password, passwordHash)` in
+`src/passwords.ts` use the `argon2` library and Argon2id with 64 MiB memory
+(`memoryCost: 65536` KiB), three iterations, and parallelism one. The library
+generates a fresh cryptographic salt for each hash; the encoded hash includes
+the algorithm, parameters, salt, and result, and can be stored in `password_hash`.
+
+Correct passwords return `true` and incorrect passwords return `false`.
+Invalid stored hashes and library errors propagate as errors, not authentication
+failures. Passwords are not trimmed or normalized and are never logged.
+Password policy, admin creation, and login integration are separate steps;
+these helpers do not access a database or create accounts.
+
 ## Deployment configuration boundary
 
 The database-enabled startup requires a reachable `DATABASE_URL` on Render.
