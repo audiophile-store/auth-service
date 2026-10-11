@@ -15,7 +15,7 @@ export async function readAdminCredentials(): Promise<{ email: string; password:
   });
   const terminal = createInterface({ input: process.stdin, output, terminal: true, historySize: 0 });
   function question(prompt: string): Promise<string> {
-    process.stdout.write(prompt);
+    if (hidden) process.stdout.write(prompt);
     return new Promise((resolve, reject) => {
       function cancel() {
         terminal.removeListener("SIGINT", cancel);
@@ -25,7 +25,7 @@ export async function readAdminCredentials(): Promise<{ email: string; password:
       }
       terminal.once("SIGINT", cancel);
       terminal.once("close", cancel);
-      terminal.question("", (answer) => {
+      terminal.question(prompt, (answer) => {
         terminal.removeListener("SIGINT", cancel);
         terminal.removeListener("close", cancel);
         if (hidden) process.stdout.write("\n");
