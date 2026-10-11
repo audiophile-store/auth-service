@@ -52,11 +52,37 @@ export function registerAuth(app: Express, database: AuthDatabase | undefined, o
   }
   const now = options.now ?? Date.now;
   const limiter = createLoginLimit();
-  const cookieOptions = { httpOnly: true, secure: options.secureCookies, sameSite: "lax" as const, path: "/" };
+  const cookieOptions = {
+    httpOnly: true,
+    secure: options.secureCookies,
+    sameSite: options.secureCookies ? "none" as const : "lax" as const,
+    path: "/",
+  };
 
   app.use(["/login", "/me", "/logout"], (req, res, next) => {
     res.set("Cache-Control", "no-store");
-    if (req.method === "POST" && !options.allowedOrigins.includes(req.get("Origin") ?? "")) {
+    res.vary("Origin");
+    const origin = req.get("Origin");
+    const allowedOrigin = origin !== undefined && options.allowedOrigins.includes(origin);
+    if (allowedOrigin) {
+      res.set("Access-Control-Allow-Origin", origin);
+      res.set("Access-Control-Allow-Credentials", "true");
+    }
+    if (req.method === "OPTIONS") {
+      res.vary("Access-Control-Request-Method");
+      res.vary("Access-Control-Request-Headers");
+      const method = req.baseUrl === "/me" ? "GET" : "POST";
+      const headers = (req.get("Access-Control-Request-Headers") ?? "")
+        .split(",").map((header) => header.trim().toLowerCase()).filter(Boolean);
+      if (!allowedOrigin || req.get("Access-Control-Request-Method") !== method ||
+        headers.some((header) => header !== "content-type")) {
+        return errorResponse(res, 403, "Forbidden preflight", "FORBIDDEN_PREFLIGHT");
+      }
+      res.set("Access-Control-Allow-Methods", method);
+      res.set("Access-Control-Allow-Headers", "Content-Type");
+      return res.status(204).end();
+    }
+    if (req.method === "POST" && !allowedOrigin) {
       return errorResponse(res, 403, "Forbidden origin", "FORBIDDEN_ORIGIN");
     }
     next();

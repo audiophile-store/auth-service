@@ -72,6 +72,8 @@ test("login returns identity and exact one-hour expiry, stores only token hash a
     const response = await request("/login", loginBody(" ADMIN@EXAMPLE.COM "));
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.equal(response.headers.get("access-control-allow-origin"), origin);
+    assert.equal(response.headers.get("access-control-allow-credentials"), "true");
     const body = await response.json();
     assert.deepEqual(Object.keys(body).sort(), ["expiresAt", "user"]);
     assert.deepEqual(Object.keys(body.user).sort(), ["email", "id", "role"]);
@@ -80,7 +82,7 @@ test("login returns identity and exact one-hour expiry, stores only token hash a
     assert.equal(body.expiresAt, "2026-10-10T13:00:00.000Z");
     const cookie = response.headers.get("set-cookie");
     assert.ok(cookie);
-    for (const attribute of ["HttpOnly", "Secure", "SameSite=Lax", "Path=/", "Max-Age=3600"]) {
+    for (const attribute of ["HttpOnly", "Secure", "SameSite=None", "Path=/", "Max-Age=3600"]) {
       assert.ok(cookie.includes(attribute), attribute);
     }
     assert.doesNotMatch(cookie, /Domain=/i);
@@ -103,6 +105,13 @@ test("local HTTP cookie omits Secure while retaining HttpOnly and SameSite", asy
     assert.equal(response.status, 200);
     assert.doesNotMatch(response.headers.get("set-cookie") ?? "", /Secure/i);
     assert.match(response.headers.get("set-cookie") ?? "", /HttpOnly/);
+    assert.match(response.headers.get("set-cookie") ?? "", /SameSite=Lax/);
+    const logout = await request("/logout", {
+      method: "POST", headers: { origin, cookie: sessionCookie(response) },
+    });
+    assert.equal(logout.status, 204);
+    assert.doesNotMatch(logout.headers.get("set-cookie") ?? "", /Secure/i);
+    assert.match(logout.headers.get("set-cookie") ?? "", /SameSite=Lax/);
   }, false);
 });
 
@@ -149,8 +158,10 @@ test("me needs no Origin, does not extend expiry, and rejects the exact expiry b
     const body = await login.json();
     const cookie = sessionCookie(login);
     setTime(initialTime + 3599999);
-    const me = await request("/me", { headers: { cookie } });
+    const me = await request("/me", { headers: { cookie, origin } });
     assert.equal(me.status, 200);
+    assert.equal(me.headers.get("access-control-allow-origin"), origin);
+    assert.equal(me.headers.get("access-control-allow-credentials"), "true");
     assert.deepEqual(await me.json(), body);
     assert.equal(me.headers.get("set-cookie"), null);
     assert.equal(me.headers.get("cache-control"), "no-store");
@@ -185,8 +196,12 @@ test("logout revokes only the current session and clears cookie; repeated logout
     const second = sessionCookie(await request("/login", loginBody()));
     const logout = await request("/logout", { method: "POST", headers: { origin, cookie: first } });
     assert.equal(logout.status, 204);
+    assert.equal(logout.headers.get("access-control-allow-origin"), origin);
+    assert.equal(logout.headers.get("access-control-allow-credentials"), "true");
     assert.match(logout.headers.get("set-cookie") ?? "", /audiophile_session=;/);
     assert.match(logout.headers.get("set-cookie") ?? "", /Expires=Thu, 01 Jan 1970/);
+    assert.match(logout.headers.get("set-cookie") ?? "", /SameSite=None/);
+    assert.match(logout.headers.get("set-cookie") ?? "", /Secure/);
     assert.equal(logout.headers.get("cache-control"), "no-store");
     assert.equal((await request("/me", { headers: { cookie: first } })).status, 401);
     assert.equal((await request("/me", { headers: { cookie: second } })).status, 200);

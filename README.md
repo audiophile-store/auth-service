@@ -200,15 +200,51 @@ change endpoint is provided, and no admin is created at server startup.
 
 Sessions expire one hour after login. A random 32-byte token is sent only in
 the `audiophile_session` cookie; PostgreSQL stores its SHA-256 hash. Cookies
-use HttpOnly, Path=/, SameSite=Lax, no Domain, and Secure except when
-`NODE_ENV=development` for local HTTP. Auth responses have `Cache-Control: no-store`.
+use HttpOnly, Path=/ and no Domain. Production cookies use `SameSite=None; Secure`
+so the HTTPS frontend can use a session on a different site. With
+`NODE_ENV=development`, local HTTP cookies use `SameSite=Lax` without Secure.
+Login and logout clear/set cookies with the same attributes.
+Auth responses have `Cache-Control: no-store`.
 
 Set `AUTH_ALLOWED_ORIGINS` to comma-separated exact UI origins (no trailing
 slash). Login/logout require a matching Origin header; `/me` works without it
 for backend callers. An empty allowlist denies login/logout and produces a
 startup warning. Compose uses development mode by default for local HTTP;
 Render must retain production mode and its explicit approved UI origins.
-No CORS or frontend proxy is configured in this step.
+The same direct API integration is used locally and in production; no frontend
+proxy is needed. Auth routes return credentialed CORS headers only for exact
+allowlisted origins, including error responses, and handle JSON preflights
+without accessing the database. Preflights allow GET for `/me`, POST for
+`/login` and `/logout`, and the Content-Type header. Other origins, methods
+and headers are rejected.
+
+Locally, use `http://localhost:5173` consistently in the browser and
+`VITE_AUTH_API_URL=http://localhost:3002` in the webshop. `127.0.0.1` is a
+different origin and site; do not mix it with localhost for local cookies.
+In production, set the webshop's `VITE_AUTH_API_URL` to the public HTTPS auth
+base URL, configure `AUTH_ALLOWED_ORIGINS` with the exact HTTPS webshop origin,
+and retain `NODE_ENV=production`. Rebuild/redeploy both applications after
+changing their configuration. Browser third-party cookie restrictions can
+still block cross-site sessions; use same-site HTTPS domains if required.
+
+### Production environment variables
+
+On Render, configure the auth service:
+
+| Variable | Value |
+| --- | --- |
+| `AUTH_ALLOWED_ORIGINS` | `https://audiophile-store-beryl.vercel.app`, or the exact frontend origin you use, without a trailing slash. |
+| `DATABASE_URL` | Keep the existing production database connection string private. |
+| `NODE_ENV` | `production` (already the default in the Docker runtime image). |
+
+On Vercel, configure the webshop's Production environment with
+`VITE_AUTH_API_URL` set to the auth service's public HTTPS base URL, without an
+endpoint such as `/login`. No additional CORS or cookie variables are required.
+Deploy the updated auth code on Render; environment changes alone do not add
+CORS support to an older image. Redeploy the webshop if its API URL changed
+since the last build. Preview origins must be explicitly allowlisted and use
+the corresponding Vercel environment configuration; production settings do
+not automatically cover preview deployments.
 
 The in-memory limiter allows 30 login attempts per IP and five failed attempts
 per IP/email in a 15-minute fixed window. It resets on restart and is intended
