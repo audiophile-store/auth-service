@@ -4,7 +4,7 @@ The administrator authentication backend for the Audiophile portfolio project.
 It verifies credentials and manages cookie-based sessions stored in PostgreSQL.
 
 **[Live webshop](https://audiophile-store-beryl.vercel.app/)** ·
-**[Frontend code and screenshots](https://github.com/audiophile-store/webshop)**
+**[Frontend code](https://github.com/audiophile-store/webshop)**
 
 **Admin demo access:** Contact [Stefan Rakonjac](https://github.com/xarambash)
 to request private credentials for the [admin area](https://audiophile-store-beryl.vercel.app/admin).
